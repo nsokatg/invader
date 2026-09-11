@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ギャラクシー・シューター（キー改善版）</title>
+    <style>
+        body {
+            margin: 0;
+            background-color: #050510;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            color: white;
+            font-family: sans-serif;
+            overflow: hidden;
+        }
+        canvas {
+            border: 4px solid #33f;
+            box-shadow: 0 0 20px rgba(0, 0, 255, 0.5);
+            background-color: #000;
+        }
+    </style>
+</head>
+<body>
+
+<canvas id="gameCanvas" width="480" height="500"></canvas>
+
+<script>
+const canvas = document.getElementById("gameCanvas");
+const ctx = canvas.getContext("2d");
+
+// ゲーム状態の変数
+let score;
+let gameOver;
+let gameClear;
+let stars = [];
+let player;
+let bullets;
+let aliens;
+
+let baseStartX;
+let baseStartY;
+let formationDirection;
+const formationSpeed = 0.8;
+
+const alienWidth = 26;
+const alienHeight = 20;
+const padding = 14;
+const rows = 3;
+const cols = 6;
+const bulletSpeed = 8;
+
+// 星空の初期生成
+for (let i = 0; i < 30; i++) {
+    stars.push({
+        x: Math.random() * canvas.width,
+        y: Math.random() * canvas.height,
+        speed: Math.random() * 2 + 0.5,
+        size: Math.random() * 2
+    });
+}
+
+// ゲームの状態を初期化する関数
+function initGame() {
+    score = 0;
+    gameOver = false;
+    gameClear = false;
+    bullets = [];
+    
+    player = {
+        x: canvas.width / 2 - 15,
+        y: canvas.height - 40,
+        width: 30,
+        height: 20,
+        speed: 5
+    };
+
+    baseStartX = 80;
+    baseStartY = 60;
+    formationDirection = 1;
+
+    aliens = [];
+    for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+            aliens.push({
+                gridR: r,
+                gridC: c,
+                x: 0,
+                y: 0,
+                status: 1,
+                flyState: 0,
+                flyTime: 0,
+                flyType: Math.random() > 0.5 ? 1 : 2,
+                startX: 0,
+                startY: 0
+            });
+        }
+    }
+}
+
+// キー監視用のフラグ
+let rightPressed = false;
+let leftPressed = false;
+
+// 【修正箇所】キーボードが押されたときの処理（A/Dキーにも対応）
+document.addEventListener("keydown", (e) => {
+    if (e.key === "Right" || e.key === "ArrowRight" || e.key === "d" || e.key === "D") {
+        rightPressed = true;
+    }
+    if (e.key === "Left" || e.key === "ArrowLeft" || e.key === "a" || e.key === "A") {
+        leftPressed = true;
+    }
+    
+    if (e.key === " " || e.key === "Spacebar") {
+        e.preventDefault();
+        
+        if (gameOver || gameClear) {
+            initGame();
+            return;
+        }
+        
+        if (bullets.length < 2) {
+            bullets.push({ x: player.x + player.width / 2 - 2, y: player.y });
+        }
+    }
+});
+
+// 【修正箇所】キーボードが離されたときの処理（A/Dキーにも対応）
+document.addEventListener("keyup", (e) => {
+    if (e.key === "Right" || e.key === "ArrowRight" || e.key === "d" || e.key === "D") {
+        rightPressed = false;
+    }
+    if (e.key === "Left" || e.key === "ArrowLeft" || e.key === "a" || e.key === "A") {
+        leftPressed = false;
+    }
+});
+
+// 定期的に敵を突撃させる
+setInterval(() => {
+    if (gameOver || gameClear) return;
+    
+    let waitingAliens = aliens.filter(a => a.status === 1 && a.flyState === 0);
+    if (waitingAliens.length > 0) {
+        let luckyAlien = waitingAliens[Math.floor(Math.random() * waitingAliens.length)];
+        luckyAlien.flyState = 1; 
+        luckyAlien.flyTime = 0;
+        luckyAlien.startX = luckyAlien.x;
+        luckyAlien.startY = luckyAlien.y;
+    }
+}, 1500);
+
+// 当たり判定
+function checkCollisions() {
+    let aliveCount = 0;
+    for (let i = 0; i < aliens.length; i++) {
+        let a = aliens[i];
+        if (a.status === 1) {
+            aliveCount++;
+            for (let b = 0; b < bullets.length; b++) {
+                if (bullets[b].x > a.x && bullets[b].x < a.x + alienWidth &&
+                    bullets[b].y > a.y && bullets[b].y < a.y + alienHeight) {
+                    a.status = 0;
+                    bullets.splice(b, 1);
+                    score += (a.flyState !== 0) ? 30 : 10;
+                    b--;
+                }
+            }
+            if (a.x < player.x + player.width && a.x + alienWidth > player.x &&
+                a.y < player.y + player.height && a.y + alienHeight > player.y) {
+                gameOver = true;
+            }
+        }
+    }
+    if (aliveCount === 0) gameClear = true;
+}
+
+// メインループ
+function update() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    ctx.fillStyle = "#fff";
+    for (let i = 0; i < stars.length; i++) {
+        stars[i].y += stars[i].speed;
+        if (stars[i].y > canvas.height) stars[i].y = 0;
+        ctx.fillRect(stars[i].x, stars[i].y, stars[i].size, stars[i].size);
+    }
+
+    if (gameOver) {
+        ctx.fillStyle = "#ff3333";
+        ctx.font = "bold 36px sans-serif";
+        ctx.fillText("GAME OVER", canvas.width/2 - 110, canvas.height/2 - 20);
+        ctx.font = "20px sans-serif";
+        ctx.fillStyle = "#fff";
+        ctx.fillText(`SCORE: ${score}`, canvas.width/2 - 50, canvas.height/2 + 30);
+        ctx.font = "16px sans-serif";
+        ctx.fillStyle = "#aaa";
+        ctx.fillText("PRESS SPACE TO RESTART", canvas.width/2 - 105, canvas.height/2 + 80);
+        requestAnimationFrame(update);
+        return;
+    }
+
+    if (gameClear) {
+        ctx.fillStyle = "#33ffff";
+        ctx.font = "bold 36px sans-serif";
+        ctx.fillText("GAME CLEAR!", canvas.width/2 - 115, canvas.height/2 - 20);
+        ctx.font = "20px sans-serif";
+        ctx.fillStyle = "#fff";
+        ctx.fillText(`SCORE: ${score}`, canvas.width/2 - 50, canvas.height/2 + 30);
+        ctx.font = "16px sans-serif";
+        ctx.fillStyle = "#aaa";
+        ctx.fillText("PRESS SPACE TO PLAY AGAIN", canvas.width/2 - 115, canvas.height/2 + 80);
+        requestAnimationFrame(update);
+        return;
+    }
+
+    ctx.fillStyle = "#0ff";
+    ctx.font = "16px monospace";
+    ctx.fillText(`SCORE: ${score}`, 15, 30);
+
+    // プレイヤー移動・描画
+    if (rightPressed && player.x < canvas.width - player.width) player.x += player.speed;
+    if (leftPressed && player.x > 0) player.x -= player.speed;
+    
+    ctx.fillStyle = "#00ffcc";
+    ctx.fillRect(player.x, player.y + 8, player.width, player.height - 8);
+    ctx.fillRect(player.x + 10, player.y, 10, 8);
+
+    // 弾の移動・描画
+    ctx.fillStyle = "#ffff00";
+    for (let i = 0; i < bullets.length; i++) {
+        bullets[i].y -= bulletSpeed;
+        ctx.fillRect(bullets[i].x, bullets[i].y, 4, 12);
+        if (bullets[i].y < 0) {
+            bullets.splice(i, 1);
+            i--;
+        }
+    }
+
+    // 全体編隊の左右移動
+    baseStartX += formationSpeed * formationDirection;
+    if (baseStartX + (cols * (alienWidth + padding)) > canvas.width - 20 || baseStartX < 20) {
+        formationDirection *= -1;
+    }
+
+    // 敵の座標計算と描画
+    for (let i = 0; i < aliens.length; i++) {
+        let a = aliens[i];
+        if (a.status === 0) continue;
+
+        let targetX = baseStartX + a.gridC * (alienWidth + padding);
+        let targetY = baseStartY + a.gridR * (alienHeight + padding);
+
+        if (a.flyState === 0) {
+            a.x = targetX;
+            a.y = targetY;
+        } else if (a.flyState === 1) {
+            a.flyTime += 0.02;
+            a.y += 3.5; 
+            if (a.flyType === 1) {
+                a.x = a.startX + Math.sin(a.flyTime * 5) * 80;
+            } else {
+                a.x = a.startX - Math.cos(a.flyTime * 5) * 80;
+            }
+
+            if (a.y > canvas.height) {
+                a.flyState = 2;
+                a.x = targetX;
+                a.y = -30;
+            }
+        } else if (a.flyState === 2) {
+            a.x = targetX; 
+            a.y += 3;
+            if (a.y >= targetY) {
+                a.y = targetY;
+                a.flyState = 0;
+            }
+        }
+
+        if (a.flyState === 1) ctx.fillStyle = "#ff9900";
+        else if (a.flyState === 2) ctx.fillStyle = "#3399ff";
+        else ctx.fillStyle = "#ff00ff";
+        
+        ctx.beginPath();
+        ctx.moveTo(a.x + alienWidth/2, a.y);
+        ctx.lineTo(a.x + alienWidth, a.y + alienHeight);
+        ctx.lineTo(a.x, a.y + alienHeight);
+        ctx.closePath();
+        ctx.fill();
+    }
+
+    checkCollisions();
+    requestAnimationFrame(update);
+}
+
+initGame();
+update();
+</script>
+
+</body>
+</html>
